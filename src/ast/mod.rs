@@ -113,6 +113,14 @@ pub struct CatchClause {
     pub body: Vec<Stmt>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Ident(String),
@@ -124,4 +132,5 @@ pub enum Expr {
     FieldAccess(Box<Expr>, String),
     ResultOk(Box<Expr>),
     ResultErr(Box<Expr>),
+    BinaryOp(Box<Expr>, BinaryOp, Box<Expr>),
 }

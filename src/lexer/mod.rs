@@ -35,6 +35,10 @@ pub enum Token {
     RParen,
     LBracket,
     RBracket,
+    Plus,
+    Minus,
+    Star,
+    Slash,
     // Indentation
     Indent,
     Dedent,
@@ -281,6 +285,33 @@ impl Lexer {
                 })
             }
 
+            Some('+') => {
+                self.advance();
+                Ok(SpannedToken {
+                    token: Token::Plus,
+                    line,
+                    col,
+                })
+            }
+
+            Some('*') => {
+                self.advance();
+                Ok(SpannedToken {
+                    token: Token::Star,
+                    line,
+                    col,
+                })
+            }
+
+            Some('/') => {
+                self.advance();
+                Ok(SpannedToken {
+                    token: Token::Slash,
+                    line,
+                    col,
+                })
+            }
+
             Some('-') => {
                 self.advance();
                 if self.peek() == Some('>') {
@@ -291,10 +322,10 @@ impl Lexer {
                         col,
                     })
                 } else {
-                    // Treat as minus sign in number context - for now error
-                    Err(VenturiError::Parse {
+                    Ok(SpannedToken {
+                        token: Token::Minus,
                         line,
-                        msg: "Unexpected '-' without '>'".to_string(),
+                        col,
                     })
                 }
             }

@@ -548,6 +548,140 @@ fn cmd_gui(dir: &Path, backend: gui::Backend) -> error::Result<()> {
     gui::run(card, backend)
 }
 
+fn cmd_emit(dir: &Path, format: &str, output: &Path) -> error::Result<()> {
+    let mut vt_files: Vec<PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("vt"))
+        .collect();
+    vt_files.sort();
+
+    if vt_files.is_empty() {
+        println!("No .vt files found in {}", dir.display());
+        return Ok(());
+    }
+
+    // Parse and validate all files
+    let mut named_files: Vec<(String, ast::VtFile)> = Vec::new();
+    for path in &vt_files {
+        let source = std::fs::read_to_string(path)?;
+        let tokens = lexer::tokenize(&source)?;
+        let vt = parser::parse(tokens)?;
+
+        let validator = validator::Validator::new();
+        validator.validate_file(&vt)?;
+
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("node")
+            .to_string();
+        named_files.push((name, vt));
+    }
+
+    // Collect all edges
+    let edges: Vec<(String, String)> = named_files
+        .iter()
+        .flat_map(|(_, vt)| {
+            vt.dag_wires
+                .iter()
+                .map(|w| (w.from.clone(), w.to.clone()))
+        })
+        .collect();
+
+    // Topological sort via Kahn's algorithm
+    let ordered = topo_sort_names(&named_files, &edges)?;
+
+    // Build DagContext with borrowed refs
+    let nodes: Vec<(&str, &ast::VtFile)> = ordered
+        .iter()
+        .filter_map(|name| {
+            named_files
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(n, vt)| (n.as_str(), vt))
+        })
+        .collect();
+
+    let edge_refs: Vec<(&str, &str)> = edges
+        .iter()
+        .map(|(f, t)| (f.as_str(), t.as_str()))
+        .collect();
+
+    let ctx = codegen::DagContext {
+        nodes,
+        edges: edge_refs,
+    };
+
+    // Dispatch to emitter
+    let files = codegen::emit_dag(&ctx, format)?;
+
+    // Write output
+    std::fs::create_dir_all(output)?;
+    for (filename, content) in &files {
+        let path = output.join(filename);
+        std::fs::write(&path, content)?;
+        println!("  wrote {}", path.display());
+    }
+
+    println!("Emitted {} file(s) to {}", files.len(), output.display());
+    Ok(())
+}
+
+fn topo_sort_names(
+    files: &[(String, ast::VtFile)],
+    edges: &[(String, String)],
+) -> error::Result<Vec<String>> {
+    // Kahn's algorithm for topological sort on name strings.
+    let mut in_degree: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+
+    // Initialize
+    for (name, _) in files {
+        in_degree.insert(name.clone(), 0);
+        adj.entry(name.clone()).or_insert_with(Vec::new);
+    }
+
+    // Count in-degrees
+    for (from, to) in edges {
+        adj.entry(from.clone())
+            .or_insert_with(Vec::new)
+            .push(to.clone());
+        *in_degree.entry(to.clone()).or_insert(0) += 1;
+    }
+
+    // Find all nodes with in_degree 0
+    let mut queue: Vec<String> = in_degree
+        .iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    let mut result = Vec::new();
+    while let Some(node) = queue.pop() {
+        result.push(node.clone());
+
+        if let Some(neighbors) = adj.get(&node) {
+            for neighbor in neighbors.clone() {
+                if let Some(deg) = in_degree.get_mut(&neighbor) {
+                    *deg -= 1;
+                    if *deg == 0 {
+                        queue.push(neighbor.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    if result.len() != files.len() {
+        return Err(error::VenturiError::Codegen(
+            "cycle detected in DAG".to_string(),
+        ));
+    }
+
+    Ok(result)
+}
+
 fn eval_const_expr(expr: &ast::Expr) -> vm::bytecode::Value {
     use ast::Expr;
     use vm::bytecode::Value;

@@ -315,6 +315,42 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr> {
+        self.parse_term()
+    }
+
+    fn parse_term(&mut self) -> Result<Expr> {
+        let mut left = self.parse_factor()?;
+
+        while let Some(op) = match self.peek() {
+            Token::Plus => Some(crate::ast::BinaryOp::Add),
+            Token::Minus => Some(crate::ast::BinaryOp::Sub),
+            _ => None,
+        } {
+            self.advance();
+            let right = self.parse_factor()?;
+            left = Expr::BinaryOp(Box::new(left), op, Box::new(right));
+        }
+
+        Ok(left)
+    }
+
+    fn parse_factor(&mut self) -> Result<Expr> {
+        let mut left = self.parse_primary()?;
+
+        while let Some(op) = match self.peek() {
+            Token::Star => Some(crate::ast::BinaryOp::Mul),
+            Token::Slash => Some(crate::ast::BinaryOp::Div),
+            _ => None,
+        } {
+            self.advance();
+            let right = self.parse_primary()?;
+            left = Expr::BinaryOp(Box::new(left), op, Box::new(right));
+        }
+
+        Ok(left)
+    }
+
+    fn parse_primary(&mut self) -> Result<Expr> {
         match self.peek().clone() {
             Token::ResultOk => {
                 self.advance();

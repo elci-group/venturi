@@ -171,6 +171,16 @@ impl Compiler {
                 self.compile_expr(inner);
                 self.code.push(Instruction::WrapErr);
             }
+            Expr::BinaryOp(left, op, right) => {
+                self.compile_expr(left);
+                self.compile_expr(right);
+                match op {
+                    crate::ast::BinaryOp::Add => self.code.push(Instruction::Add),
+                    crate::ast::BinaryOp::Sub => self.code.push(Instruction::Sub),
+                    crate::ast::BinaryOp::Mul => self.code.push(Instruction::Mul),
+                    crate::ast::BinaryOp::Div => self.code.push(Instruction::Div),
+                }
+            }
         }
     }
 }

@@ -1,6 +1,5 @@
 use crate::ast::VtFile;
 use crate::error::{Result, VenturiError};
-use std::fmt::Write as FmtWrite;
 
 /// Resolved DAG context passed to all emitters.
 /// Nodes are in topological order (sources first, sinks last).

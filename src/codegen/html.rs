@@ -35,7 +35,7 @@ impl Emitter for HtmlEmitter {
             w.indent();
             for (from, to) in &ctx.edges {
                 w.line(&format!(
-                    r#"<li><a href="#{}">{}</a> → <a href="#{}">{}</a></li>"#,
+                    "<li><a href=\"#{}\">{}</a> → <a href=\"#{}\">{}</a></li>",
                     from, from, to, to
                 ));
             }

@@ -76,24 +76,37 @@ fn emit_node_tsx(name: &str, vt: &crate::ast::VtFile, _ctx: &DagContext<'_>) -> 
     ));
     w.indent();
 
+    // Destructure inputs if there are any
+    if !vt.inputs.is_empty() {
+        let input_names: Vec<&str> = vt.inputs.iter().map(|i| i.name.as_str()).collect();
+        w.line(&format!("const {{ {} }} = _inputs;", input_names.join(", ")));
+    }
+
+    let mut has_return = false;
     if let Some(func) = &vt.func {
         for stmt in &func.body {
-            emit_stmt(&mut w, stmt);
+            if matches!(stmt, crate::ast::Stmt::Return(_)) {
+                has_return = true;
+            }
+            // Pass output names so Return can be wrapped properly
+            emit_stmt_with_outputs(&mut w, stmt, &vt.outputs);
         }
     }
 
     // Default return if none exists
-    if vt.outputs.len() == 1 {
-        let out_name = &vt.outputs[0].name;
-        w.line(&format!("return {{ {}: undefined }};", out_name));
-    } else if !vt.outputs.is_empty() {
-        let defaults = vt
-            .outputs
-            .iter()
-            .map(|o| format!("{}: undefined", o.name))
-            .collect::<Vec<_>>()
-            .join(", ");
-        w.line(&format!("return {{ {} }};", defaults));
+    if !has_return {
+        if vt.outputs.len() == 1 {
+            let out_name = &vt.outputs[0].name;
+            w.line(&format!("return {{ {}: undefined }};", out_name));
+        } else if !vt.outputs.is_empty() {
+            let defaults = vt
+                .outputs
+                .iter()
+                .map(|o| format!("{}: undefined", o.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            w.line(&format!("return {{ {} }};", defaults));
+        }
     }
 
     w.dedent();
@@ -110,9 +123,17 @@ fn emit_index_tsx(ctx: &DagContext<'_>) -> Result<String> {
     w.blank();
 
     // Imports
-    for (name, _) in &ctx.nodes {
+    for (name, vt) in &ctx.nodes {
+        let func_name = vt
+            .func
+            .as_ref()
+            .map(|f| f.name.as_str())
+            .unwrap_or("render");
         let camel = capitalize(name);
-        w.line(&format!("import {{ render as {}Render }} from \"./{}\";", camel, name));
+        w.line(&format!(
+            "import {{ {} as {}Fn, type {}Outputs }} from \"./{}\";",
+            func_name, camel, camel, name
+        ));
     }
     w.blank();
 
@@ -120,23 +141,33 @@ fn emit_index_tsx(ctx: &DagContext<'_>) -> Result<String> {
     w.indent();
 
     // Calls in topological order
-    for (name, _) in &ctx.nodes {
+    for (name, vt) in &ctx.nodes {
         let camel = capitalize(name);
-        let deps = ctx.deps_of(name);
 
-        if deps.is_empty() {
-            w.line(&format!("const {} = {}Render({{}});", name, camel));
+        // Build props from input declarations
+        if vt.inputs.is_empty() {
+            w.line(&format!("const {} = {}Fn({{}});", name, camel));
         } else {
-            // Collect deps as props
-            let props = deps
+            // Collect props from upstream outputs
+            let props: Vec<String> = vt
+                .inputs
                 .iter()
-                .map(|dep| {
-                    let dep_camel = capitalize(dep);
-                    format!("{}: {}.output", dep, dep)
+                .filter_map(|input| {
+                    // Try to find a wire that provides this input
+                    // This is a heuristic: assume upstream node's first output feeds this input
+                    let providing_node = ctx.deps_of(name).first().copied();
+                    providing_node.map(|upstream| {
+                        format!("{}: {}", input.name, upstream)
+                    })
                 })
-                .collect::<Vec<_>>()
-                .join(", ");
-            w.line(&format!("const {} = {}Render({{{}}});", name, camel, props));
+                .collect();
+
+            if props.is_empty() {
+                w.line(&format!("const {} = {}Fn({{}});", name, camel));
+            } else {
+                let props_str = props.join(", ");
+                w.line(&format!("const {} = {}Fn({{{}}});", name, camel, props_str));
+            }
         }
     }
 
@@ -181,7 +212,11 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-fn emit_stmt(w: &mut CodeWriter, stmt: &crate::ast::Stmt) {
+fn emit_stmt_with_outputs(
+    w: &mut CodeWriter,
+    stmt: &crate::ast::Stmt,
+    outputs: &[crate::ast::OutputDecl],
+) {
     use crate::ast::Stmt;
     match stmt {
         Stmt::Assign(name, expr) => {
@@ -190,7 +225,16 @@ fn emit_stmt(w: &mut CodeWriter, stmt: &crate::ast::Stmt) {
         }
         Stmt::Return(expr) => {
             let e = emit_expr(expr);
-            w.line(&format!("return {};", e));
+            // If there's exactly one output, wrap the return value
+            if outputs.len() == 1 {
+                let out_name = &outputs[0].name;
+                w.line(&format!("return {{ {}: {} }};", out_name, e));
+            } else if outputs.is_empty() {
+                w.line(&format!("return {};", e));
+            } else {
+                // Multiple outputs: return as-is (user should return an object)
+                w.line(&format!("return {};", e));
+            }
         }
         Stmt::Expr(expr) => {
             let e = emit_expr(expr);
@@ -200,14 +244,14 @@ fn emit_stmt(w: &mut CodeWriter, stmt: &crate::ast::Stmt) {
             w.line("try {");
             w.indent();
             for s in body {
-                emit_stmt(w, s);
+                emit_stmt_with_outputs(w, s, outputs);
             }
             w.dedent();
             for catch in catches {
                 w.line(&format!("}} catch ({}_{}: unknown) {{", catch.error_type, catch.binding));
                 w.indent();
                 for s in &catch.body {
-                    emit_stmt(w, s);
+                    emit_stmt_with_outputs(w, s, outputs);
                 }
                 w.dedent();
             }
@@ -241,6 +285,15 @@ fn emit_expr(expr: &crate::ast::Expr) -> String {
         }
         Expr::ResultErr(inner) => {
             format!("{{ err: {} }}", emit_expr(inner))
+        }
+        Expr::BinaryOp(left, op, right) => {
+            let op_str = match op {
+                crate::ast::BinaryOp::Add => "+",
+                crate::ast::BinaryOp::Sub => "-",
+                crate::ast::BinaryOp::Mul => "*",
+                crate::ast::BinaryOp::Div => "/",
+            };
+            format!("({} {} {})", emit_expr(left), op_str, emit_expr(right))
         }
     }
 }
