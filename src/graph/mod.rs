@@ -77,8 +77,10 @@ impl Dag {
 
         self.graph.add_edge(from_idx, to_idx, ());
 
-        // Check for cycle immediately
-        if is_cyclic_directed(&self.graph) {
+        // Use our iterative downstream check to see if `to` can reach `from` (Cycle Detection)
+        // This avoids petgraph's is_cyclic_directed which might stack overflow on deep graphs
+        let downstream_of_to = self.downstream(to);
+        if downstream_of_to.contains(&from) || to == from {
             // Remove the edge we just added
             if let Some(edge) = self.graph.find_edge(from_idx, to_idx) {
                 self.graph.remove_edge(edge);
@@ -101,30 +103,29 @@ impl Dag {
         }
     }
 
-    pub fn downstream(&self, node_id: u32) -> Vec<u32> {
+    pub fn downstream(&self, start_node_id: u32) -> Vec<u32> {
         let mut result = Vec::new();
         let mut visited = std::collections::HashSet::new();
-        self.collect_downstream(node_id, &mut result, &mut visited);
-        result
-    }
+        let mut stack = vec![start_node_id];
 
-    fn collect_downstream(
-        &self,
-        node_id: u32,
-        result: &mut Vec<u32>,
-        visited: &mut std::collections::HashSet<u32>,
-    ) {
-        if visited.contains(&node_id) {
-            return;
-        }
-        visited.insert(node_id);
+        while let Some(node_id) = stack.pop() {
+            if visited.contains(&node_id) {
+                continue;
+            }
+            visited.insert(node_id);
 
-        if let Some(neighbors) = self.edges.get(&node_id) {
-            for &neighbor in neighbors {
-                result.push(neighbor);
-                self.collect_downstream(neighbor, result, visited);
+            // Don't push the start_node_id to the result
+            if node_id != start_node_id {
+                result.push(node_id);
+            }
+
+            if let Some(neighbors) = self.edges.get(&node_id) {
+                for &neighbor in neighbors.iter().rev() {
+                    stack.push(neighbor);
+                }
             }
         }
+        result
     }
 
     pub fn has_cycle(&self) -> bool {
@@ -136,6 +137,13 @@ impl Dag {
             .values()
             .find(|n| n.name == name)
             .map(|n| n.id)
+    }
+
+    pub fn roots(&self) -> impl Iterator<Item = u32> + '_ {
+        self.nodes.keys().copied().filter(move |&id| {
+            // A root is a node with no incoming edges
+            !self.edges.values().any(|edges| edges.contains(&id))
+        })
     }
 }
 
