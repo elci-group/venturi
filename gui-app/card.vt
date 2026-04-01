@@ -1,0 +1,21 @@
+#!plane
+# description: Main contact card panel — depends on titlebar + data
+
+titlebar -> card
+data -> card
+
+output rendered: String
+
+func render():
+    log("┌──────────────────────────────────────────┐")
+    log("│                                          │")
+    log("│  Name   Alice Chen                       │")
+    log("│  Role   Software Engineer                │")
+    log("│  Email  alice@venturi.dev                │")
+    log("│  Tags   rust  systems  dags              │")
+    log("│                                          │")
+    log("│  Loaded from node:                       │")
+    log(data)
+    log("│                                          │")
+    log("└──────────────────────────────────────────┘")
+    return "card_rendered"

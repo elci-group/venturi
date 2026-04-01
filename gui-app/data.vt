@@ -1,0 +1,12 @@
+#!plane
+# description: Contact data model — source node, no side effects
+
+input name: String = "Alice Chen"
+input role: String = "Software Engineer"
+input email: String = "alice@venturi.dev"
+input tags: String = "rust  systems  dags"
+
+output record: String
+
+func load():
+    return name

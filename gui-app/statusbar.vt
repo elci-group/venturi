@@ -1,0 +1,13 @@
+#!plane
+# description: Action bar — depends on card, sink node
+
+card -> statusbar
+
+output status: String
+
+func render():
+    log("╔══════════════════════════════════════════╗")
+    log("║  [ New ]  [ Edit ]  [ Share ]            ║")
+    log("║  Contact 1 of 3           [ Search ]     ║")
+    log("╚══════════════════════════════════════════╝")
+    return "VenturiCards: Ready"
