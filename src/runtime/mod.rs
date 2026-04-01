@@ -274,6 +274,10 @@ impl Runtime {
 
         Ok(())
     }
+
+    pub fn dag(&self) -> &Dag {
+        &self.dag
+    }
 }
 
 fn eval_const_expr(expr: &crate::ast::Expr) -> Value {

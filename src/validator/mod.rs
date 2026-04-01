@@ -76,6 +76,48 @@ impl Validator {
                 node: "unknown".to_string(),
             });
         }
+        
+        self.validate_dag_types(dag)?;
+
+        Ok(())
+    }
+
+    pub fn validate_dag_types(&self, dag: &Dag) -> Result<()> {
+        use crate::graph::DagNodeKind;
+        
+        // Loop through all edges and check type matching
+        for (from_id, edges) in &dag.edges {
+            if let Some(from_node) = dag.nodes.get(from_id) {
+                for to_id in edges {
+                    if let Some(to_node) = dag.nodes.get(to_id) {
+                        
+                        let from_vt = match &from_node.kind {
+                            DagNodeKind::Module(vt) => Some(vt),
+                            _ => None,
+                        };
+                        let to_vt = match &to_node.kind {
+                            DagNodeKind::Module(vt) => Some(vt),
+                            _ => None,
+                        };
+
+                        if let (Some(from_vt), Some(to_vt)) = (from_vt, to_vt) {
+                            // Find matching output->input
+                            // If an input exists on the target node with the same name as an output on the source node, their types must match.
+                            for output in &from_vt.outputs {
+                                if let Some(input) = to_vt.inputs.iter().find(|i| i.name == output.name) {
+                                    if output.ty != input.ty {
+                                        return Err(VenturiError::Validation(format!(
+                                            "Type mismatch between '{}' and '{}': '{}' outputs {}, but '{}' expects {}",
+                                            from_node.name, to_node.name, from_node.name, output.ty, to_node.name, input.ty
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
