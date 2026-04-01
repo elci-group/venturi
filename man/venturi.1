@@ -1,0 +1,40 @@
+.TH VENTURI 1 "April 2026" "0.1.0" "Venturi Manual"
+.SH NAME
+venturi \- DAG-native programming language runtime
+.SH SYNOPSIS
+.B venturi
+[\fICOMMAND\fR] ...
+.SH DESCRIPTION
+.B venturi
+is a runtime for the Venturi domain-specific language. It executes files and directories as Directed Acyclic Graphs (DAGs). Venturi enforces strict data-flow constraints, making it ideal for robust ETL pipelines, orchestrations, and reactive GUIs.
+.SH COMMANDS
+.TP
+.BR run " " \fI<FILE>\fR
+Parse and execute a single .vt file.
+.TP
+.BR run-dag " " \fI<DIR>\fR
+Load all .vt files in a directory, build the DAG, and execute.
+.TP
+.BR chass " " \fI<DIR> \fR--output\fR \fI<FILE> \fR[--mode \fI<MODE>\fR] [--name \fI<NAME>\fR]
+Compile a directory of .vt files into a .vcbin binary format.
+.TP
+.BR vcbin " " \fI<SUBCMD>\fR
+Inspect or verify a .vcbin file. Subcommands: \fBinfo\fR, \fBverify\fR.
+.TP
+.BR pit " " \fI<SUBCMD>\fR
+Manage hot-update pits. Subcommands: \fBcreate\fR, \fBupdate\fR, \fBrollback\fR, \fBstatus\fR, \fBlist\fR.
+.TP
+.BR validate " " \fI<FILE>\fR
+Validate a .vt file (parse + check, no execution).
+.TP
+.BR graph " " \fI<DIR>\fR
+Print the DAG topology for a directory of .vt files.
+.TP
+.BR gui " " [--dir \fI<DIR>\fR] [--backend \fI<egui|iced>\fR]
+Launch the VenturiCards GUI from a gui-app DAG directory.
+.SH FILES
+.TP
+.I ~/.venturi/pits.json
+Configuration and state for Venturi pits (hot-update modules).
+.SH AUTHOR
+Elci Group <contact@elci-group.com>
