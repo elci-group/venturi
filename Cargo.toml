@@ -3,9 +3,17 @@ name = "venturi"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "venturi"
+path = "src/lib.rs"
+
 [[bin]]
 name = "venturi"
 path = "src/main.rs"
+
+[[bench]]
+name = "throughput"
+harness = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

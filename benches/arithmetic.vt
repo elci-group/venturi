@@ -1,0 +1,16 @@
+#!plane
+# description: Simple arithmetic pipeline
+
+input start_val: Int
+
+output res: Int
+
+func add_stage():
+    return start_val + 100
+
+func mul_stage():
+    return start_val * 2
+
+start_val -> add_stage
+add_stage -> mul_stage
+mul_stage -> res
